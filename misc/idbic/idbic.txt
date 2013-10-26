@@ -1,0 +1,540 @@
+#!/usr/local/bin/perl
+
+eval 'exec /usr/local/bin/perl  -S $0 ${1+"$@"}'
+    if 0; # not running under some shell
+#
+# Copyright (c) 2006 Jiro Nishiguchi <jiro@cpan.org>
+# All rights reserved.
+use strict;
+use warnings;
+use 5.8.1;
+
+use Data::Dumper ();
+use Encode;
+use Getopt::Long;
+use Pod::Usage;
+use POSIX;
+use Scalar::Util qw(blessed);
+use Term::ReadLine;
+
+our $VERSION = '0.50';
+
+local $Data::Dumper::Terse  = 1;
+local $Data::Dumper::Indent = 1;
+
+Getopt::Long::Configure qw(bundling no_ignore_case);
+
+my $conf_file = ($ENV{HOME} || ((getpwuid($<))[7])) . '/.idbicrc';
+
+my $conf = {};
+GetOptions($conf,
+    'f',
+    'host|h=s',
+    'database|d=s',
+    'user|u=s',
+    'password|p=s',
+    'port|P=s',
+    'adapter|a=s',
+    'class|c=s',
+    'dump',
+    'nodump',
+    'version|v',
+    'help|?',
+);
+
+pod2usage(0) if exists $conf->{help};
+
+show_version(0) if exists $conf->{version};
+
+run();
+
+sub run {
+    # init config
+    init_config();
+
+    # connect to database
+    my $schema = init_schema();
+
+    # make methods
+    {
+        no strict 'refs';
+        *{"IDBIC\::schema"} = sub { $schema };
+        for my $source ($schema->sources) {
+            *{"IDBIC\::$source"} = sub { $schema->resultset($source) };
+        }
+    }
+
+    welcome_message();
+
+    loop();
+}
+
+sub init_config {
+    my $yaml = {};
+    unless (delete $conf->{f}) {
+        if (-r $conf_file and eval { require YAML }) {
+            $yaml = YAML::LoadFile($conf_file);
+        }
+    }
+
+    $conf = {
+        user           => 'root',
+        password       => '',
+        host           => '',
+        port           => '',
+        adapter        => 'mysql',
+        pager          => '',
+        histsize       => 256,
+        ps1            => 'idbic[\!]$ ',
+        ps2            => '> ',
+        input_encoding => '',
+        class          => '',
+        echo           => 1,
+        dump           => 0,
+        eval           => '',
+        wantarray      => '',
+        %$yaml, %$conf,
+    };
+
+    $conf->{database} ||= pop @ARGV or pod2usage(1);
+
+    if (!$conf->{host} and $conf->{port}) {
+        $conf->{host} = 'localhost';
+    }
+
+    unless ($conf->{histfile}) {
+        $conf->{histfile} = ($ENV{HOME} || ((getpwuid($<))[7])).'/.idbic_history';
+    }
+
+    if (delete $conf->{nodump}) {
+        $conf->{dump} = 0;
+    }
+
+    unless ($conf->{output_encoding}) {
+        if (eval { require Term::Encoding }) {
+            $conf->{output_encoding} = Term::Encoding::get_encoding();
+        } else {
+            $conf->{output_encoding} = 'utf-8';
+        }
+    }
+    binmode STDOUT => ":encoding($conf->{output_encoding})";
+
+    if ($conf->{eval}) {
+        {
+            package IDBIC;
+            no strict;
+            no warnings;
+            eval $conf->{eval};
+            warn $@ if $@;
+        }
+    }
+}
+
+sub init_schema {
+    my $class = $conf->{class};
+    if ($class) {
+        eval "require $conf->{class}"; die $@ if $@;
+        die "'$conf->{class}' is not DBIx::Class::Schema."
+            unless $conf->{class}->isa('DBIx::Class::Schema');
+    } else {
+        $class = $conf->{database};
+        $class =~ s/[^a-zA-Z0-9]/_/g;
+        $class = "IDBIC::$class";
+
+        my $loader = 'DBIx::Class::Schema::Loader';
+        my $base = $conf->{loader_class} ||= $loader;
+        eval "require $base"; die $@ if $@;
+        die "'$base' is not $loader." unless $base->isa($loader);
+
+        eval qq{
+            package $class;
+            use base qw($base);
+        }; die $@ if $@;
+
+        $class->loader_options($conf->{loader_options} ||= {});
+    }
+
+    my $dsn = "dbi:$conf->{adapter}:$conf->{database}";
+    $dsn .= ":$conf->{host}" if $conf->{host};
+    $dsn .= ":$conf->{port}" if $conf->{port};
+
+    $class->connect($dsn, $conf->{user}, $conf->{password});
+}
+
+sub show_version {
+    print "idbic version $VERSION\n";
+    exit $_[0] || 0;
+}
+
+sub welcome_message {
+    print <<"END_MSG";
+Welcome to the idbic.  Commands end with `;`.
+Version: $VERSION
+
+Type 'help' or '\\h' for help. Type '\\c' to clear the buffer.
+
+END_MSG
+}
+
+sub loop {
+    my $term = init_term();
+
+    my $quit = sub {
+        $term->WriteHistory($conf->{histfile})
+            or warn "cannot write history file: $!";
+        exit 0;
+    };
+
+    sigaction SIGINT, new POSIX::SigAction sub {
+        print "Aborted\n";
+        $quit->();
+    };
+
+    my $table = {
+        'exit'     => sub { print "Bye\n" and $quit->() },
+        'quit'     => 'exit',
+        '\q'       => 'exit',
+        'clear'    => sub { },
+        '\c'       => 'clear',
+        'pager'    => sub {
+            $conf->{pager} = shift || $ENV{PAGER};
+            print "PAGER set to '$conf->{pager}'\n";
+        },
+        '\P'       => 'pager',
+        'nopager'  => sub {
+            $conf->{pager} = undef;
+            print "PAGER set to stdout\n";
+        },
+        '\n'       => 'nopager',
+        'help'     => sub {
+            pod2usage(
+                -exitval   => 'NOEXIT',
+                -verbose   => 99,
+                -sections  => 'COMMANDS|METHODS',
+            )
+        },
+        '\h'       => 'help',
+        '?'        => 'help',
+        '\?'       => 'help',
+    };
+
+    my $code = '';
+
+    my $prompt = sub {
+        return $conf->{ps2} if $code;
+        local $_ = $conf->{ps1};
+        s/\\h/$ENV{HOSTNAME}/g;
+        s/\\u/$ENV{LOGNAME}/g;
+        s/\\d/$conf->{database}/g;
+        s/\\!/$term->Attribs->{history_base} + $term->Attribs->{history_length}/eg;
+        $_;
+    };
+
+    while (defined(my $input = $term->readline($prompt->()))) {
+        next unless $input;
+        # command
+        my ($cmd, $arg) = split /\s+/, $input, 2;
+        $cmd =~ s/;$//;
+        if (my $sub = $table->{$cmd}) {
+            $code = '';
+            $sub = $table->{$sub} unless ref $sub;
+            $sub->($arg);
+            $term->addhistory($input);
+            next;
+        }
+        # eval
+        $code .= $input;
+        next unless $code =~ /;\s*$/;
+        execute($code);
+        $term->addhistory($code);
+        $code = '';
+    }
+
+    print "Bye\n";
+    $quit->();
+}
+
+sub init_term {
+    my $term = Term::ReadLine->new('idbic');
+    $term->bind_key(ord "^", 'history-expand-line', 'emacs-meta');
+    $term->bind_key(ord "\cv", 'display-readline-version', 'emacs-ctlx');
+
+    $term->MinLine(undef);
+    $term->stifle_history($conf->{histsize});
+
+    if (-r $conf->{histfile}) {
+        $term->ReadHistory($conf->{histfile})
+            or warn "cannot read history file: $!";
+    }
+
+    $term;
+}
+
+my $detector;
+
+sub detect_encoding {
+    unless ($detector) {
+        if (eval { require Encode::Detect::Detector }) {
+            $detector = sub { Encode::Detect::Detector::detect($_[0]) };
+        } else {
+            require Encode::Guess;
+            $detector = sub {
+                my @guess = qw(utf-8 euc-jp cp932 shift_jis); # Japanese only?
+                eval { Encode::Guess::guess_encoding($_[0], @guess)->name };
+            };
+        }
+    }
+
+    $detector->(@_);
+}
+
+my $force_dump;
+
+sub dump_var {
+    my $val = shift;
+    if (blessed $val and $val->isa('DBIx::Class::ResultSet')) {
+        my @list;
+        push @list, { $_->get_columns } for $val->all;
+        my $msg = $val->count == 0 ? 'Empty set'
+            : $val->count == 1 ? '1 row in set'
+            : sprintf '%d rows in set', $val->count;
+        return Data::Dumper::Dumper(@list). "\n". $msg. "\n";
+    } elsif (blessed $val and $val->isa('DBIx::Class::Row')) {
+        return Data::Dumper::Dumper({ $val->get_columns });
+    } else {
+        return $conf->{dump} || $force_dump ? Data::Dumper::Dumper($val) : $val;
+    }
+}
+
+sub decode_var {
+    my $data = dump_var(shift);
+    my $enc = $conf->{input_encoding} || detect_encoding($data) || 'utf8';
+    decode($enc, $data, Encode::FB_QUIET);
+}
+
+sub print_var {
+    my $fh;
+    if ($conf->{pager}) {
+        open $fh, "|$conf->{pager}" or die "could not find pager '$conf->{pager}'.";
+    } else {
+        $fh = *STDOUT;
+    }
+    binmode $fh => ":raw:encoding($conf->{output_encoding})";
+
+    print $fh decode_var($_) for @_;
+
+    close $fh if $conf->{pager};
+}
+
+sub execute {
+    my $code = shift;
+    my @ret;
+    {
+        package IDBIC;
+        no strict;
+        no warnings;
+        if ($conf->{wantarray}) {
+            @ret = eval $code;
+        } else {
+            $ret[0] = eval($code) || '';
+        }
+        warn $@ if $@;
+    }
+    print_var(@ret) if $conf->{echo} and @ret;
+
+    print "\n";
+}
+
+
+package IDBIC;
+
+sub dump_do(&) {
+    my $sub = shift;
+    my @ret = $sub->();
+    $force_dump = 1;
+    main::print_var(@ret) if @ret;
+    $force_dump = 0;
+    return;
+}
+
+sub sql {
+    schema()->storage->dbh->do($_[0]);
+}
+
+sub show_sources {
+    dump_do { schema()->sources };
+}
+
+sub desc {
+    my $moniker = shift;
+    my $source = schema()->resultset($moniker)->result_source;
+    dump_do {
+        my @info;
+        push @info, 'primary_columns', [ $source->primary_columns ];
+        push @info, $_, $source->column_info($_) for $source->columns;
+        @info;
+    };
+}
+
+sub show_columns {
+    my $moniker = shift;
+    dump_do {
+        schema()->resultset($moniker)->result_source->columns;
+    };
+}
+
+sub conf { $conf }
+
+sub show_config {
+    dump_do { conf() };
+}
+
+sub save_config {
+    my $file = shift || $conf_file;
+    if ($INC{'YAML.pm'} or eval { require YAML }) {
+        YAML::DumpFile($file, conf());
+        print "successfully save config to $file.\n";
+    } else {
+        warn 'error: `save_config` needs YAML.';
+    }
+    return;
+}
+
+__END__
+
+=head1 NAME
+
+idbic - interactive DBIC shell
+
+=head1 SYNOPSIS
+
+idbic [options] database
+
+idbic [options] -c Your::SchemaClass database
+
+ Options:
+   -f               Suppress read of ~/.idbicrc
+   -a --adapter     adapter (defaults to mysql)
+   -h --host        host (defaults to undef)
+   -P --port        port (defaults to 3306)
+   -u --user        user (defaults to root)
+   -p --password    password (defaults to undef)
+   -d --database    database (defaults to undef)
+   -c --class       schema class (defaults to undef)
+   --dump           Use Data::Dumper for output (defaults to off)
+   --nodump         Don't use Data::Dumper for output
+   -v --version     Print version and exits
+   -? --help        Display this help and exits
+
+ See also:
+   perldoc DBIx::Class
+   perldoc DBIx::Class::Schema::Loader
+
+=head1 DESCRIPTION
+
+interactive DBIC shell.
+
+=head1 COMMANDS
+
+ help       (\h)    Show help messages.
+ ?          (\?)    Synonym for `help`.
+ pager      (\P)    Set PAGER [$pager]. Print the query results via PAGER.
+ nopager    (\n)    Disable pager, print to stdout.
+ clear      (\c)    Clear command.
+ exit       (\q)    Exit idbic. Same as quit.
+
+=head1 METHODS
+
+=over 4
+
+=item schema
+
+Get schema instance.
+
+=item show_sources
+
+Show source monikers.
+
+=item Moniker
+
+Synonym for `schema->resultset('Moniker')`.
+
+To view monikers, type `show_sources;`.
+
+=item sql $sql
+
+Execute the SQL command.
+
+=item desc $moniker
+
+Show $moniker's column_info.
+
+=item show_columns $moniker
+
+Show $moniker's columns.
+
+=item conf
+
+Get config variables.
+
+=item show_config
+
+Show config variables.
+
+=item save_config [$file]
+
+Save config to $file or ~/.idbicrc.
+
+=back
+
+=head1 CONFIG
+
+you can write config file $HOME/.idbicrc in YAML format.
+
+eg:
+
+  pager: less
+  histfile: /home/user/.idbic_history
+  histsize: 256
+  ps1: "idbic[\!] $ "
+  ps2: "> "
+  echo: 1
+  dump: 0
+  wantarray: 0
+  output_encoding: euc-jp
+  input_encoding: utf8
+  adapter: mysql
+  host: your_host
+  user: your_username
+  password: your_password
+  port: 3306
+  database: your_database
+  #class: Your::SchemaClass
+  loader_class: Your::SchemaLoaderClass
+  loader_options:
+    components: [ InflateColumn::DateTime UTF8Columns ]
+  eval: |
+    use DateTime;
+    sub now {
+        DateTime->now->set_time_zone('local')->strftime('%Y-%m-%d %T')
+    }
+    # You can use `now` method in shell.
+
+You can change config variables in shell.
+
+eg:
+
+  conf->{dump} = 1; # Use Data::Dumper for output
+  conf->{echo} = 0; # Quiet mode
+
+=head1 AUTHOR
+
+Jiro Nishiguchi C<jiro@cpan.org>
+
+=head1 COPYRIGHT
+
+This library is free software, you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
+

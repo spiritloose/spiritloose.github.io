@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<custombuttons xmlns="http://toolbar.google.com/custombuttons/">
+<button>
+  <site>http://d.hatena.ne.jp/spiritloose/</site>
+  <search>http://d.hatena.ne.jp/spiritloose/searchdiary?word={query}</search>
+<title>spiritlooseのはてなダイアリー</title>
+<description>spiritlooseのはてなダイアリー</description>
+<icon mode="base64" type="image/x-icon">
+AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAQAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJmZmf+ZmZn/mZmZ/5mZmf+ZmZn/mZmZ/5mZmf+ZmZn/mZmZ/5mZmf+ZmZn/mZmZ/5mZmf+ZmZn/AAAAAAAAAAD/////////////////////////////////////////////////////////////////////mZmZ/wAAAAAAAAAA/////////////////////////////////////////////////////////////////////5mZmf8AAAAAAAAAAP////////////////////+1tbX/tbW1/7W1tf+1tbX/tbW1//////////////////////+ZmZn/AAAAAAAAAAD/////////////////////tbW1/7W1tf///////////7W1tf+1tbX/////////////////mZmZ/wAAAAAAAAAA/////////////////////7W1tf+1tbX/////////////////tbW1/7W1tf///////////5mZmf8AAAAAAAAAAP////////////////////+1tbX/tbW1/////////////////7W1tf+1tbX///////////+ZmZn/AAAAAAAAAAD/////////////////////tbW1/7W1tf////////////////+1tbX/tbW1////////////mZmZ/wAAAAAAAAAA/////////////////////7W1tf+1tbX/////////////////tbW1/7W1tf///////////5mZmf8AAAAAAAAAAP////////////////////+1tbX/tbW1////////////tbW1/7W1tf////////////////+ZmZn/AAAAAAAAAAD/////////////////////tbW1/7W1tf+1tbX/tbW1/7W1tf//////////////////////mZmZ/wAAAAAAAAAA/////////////////////////////////////////////////////////////////////5mZmf8AAAAAAAAAAP////////////////////////////////////////////////////////////////////+ZmZn/AAAAAAAAAAD/////////////////////////////////////////////////////////////////////mZmZ/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//8AAIABAACAAQAAgAEAAIABAACAAQAAgAEAAIABAACAAQAAgAEAAIABAACAAQAAgAEAAIABAACAAQAA//8AAA==
+</icon>
+<feed refresh-interval="3600">http://d.hatena.ne.jp/spiritloose/rss</feed>
+</button>
+</custombuttons>
+

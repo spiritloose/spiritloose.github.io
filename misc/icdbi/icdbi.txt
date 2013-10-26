@@ -1,0 +1,95 @@
+#!/usr/local/bin/perl
+use strict;
+use warnings;
+
+use Data::Dumper;
+use Term::ReadLine;
+use Getopt::Long;
+use Class::DBI;
+use Class::DBI::Loader;
+
+my $USAGE = <<'END_USAGE';
+usage: icdbi [-a adapter] [-h host] [-P port] [-u user] [-p password] database
+END_USAGE
+
+local $Data::Dumper::Terse  = 1;
+local $Data::Dumper::Indent = 1;
+
+Getopt::Long::Configure qw(bundling no_ignore_case);
+my $opt = {};
+GetOptions($opt,
+    'h|host=s',
+    'D|database=s',
+    'u|user=s',
+    'p|password=s',
+    'P|port=s',
+    'a|adapter=s',
+    'help!',
+);
+print $USAGE and exit if exists $opt->{help};
+my ($host, $database, $user, $password, $port, $adapter)
+    = map { $opt->{$_} || '' } qw(h D u p P a);
+$database ||= pop or die $USAGE;
+$user     ||= 'root';
+$password ||= '';
+$adapter  ||= 'mysql';
+
+my $dsn = "dbi:$adapter:$database";
+$dsn .= ";host=$host" if $host;
+$dsn .= ";port=$port" if $port;
+
+my $loader = Class::DBI::Loader->new(
+    dsn           => $dsn,
+    user          => $user,
+    password      => $password,
+    options       => { RaiseError => 1, AutoCommit => 1 },
+    relationships => 1,
+);
+for ($loader->classes) {
+    $_->columns(Essential => $_->columns('All'));
+    print "$_ loaded.\n";
+}
+print "\n";
+
+my $term = Term::ReadLine->new('icdbi');
+my $prompt = 'icdbi[%d]$ ';
+my $line = 0;
+my $code = '';
+
+while (defined(my $input = $term->readline($code ? '> ' : sprintf($prompt, $line)))) {
+    next unless $input;
+    quit() if $input eq 'quit' or $input =~ /\\q$/;
+    if ($input =~ /\\c$/) {
+        clear();
+        next;
+    }
+    $line++;
+    $code .= $input;
+    next unless $code =~ /;$/;
+    execute();
+    clear();
+}
+
+sub execute {
+    my @ret;
+    {
+        package ICDBI;
+        no strict;
+        no warnings;
+        @ret = eval $code;
+    }
+    print Dumper @ret;
+    warn $@ if $@;
+    print "\n";
+}
+
+sub clear {
+    $code = '';
+}
+
+sub quit {
+    print "Bye\n" and exit;
+}
+
+__END__
+

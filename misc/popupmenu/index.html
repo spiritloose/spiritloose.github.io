@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html lang="ja" xml:lang="ja" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta http-equiv="Content-Style-Type" content="text/css" />
+<meta http-equiv="Content-Script-Type" content="text/javascript" />
+<link rel="index" href="/" />
+<link rev="made" href="mailto:spiritloose&#64;gmail.com" />
+<link rel="stylesheet" href="/css/style.css" type="text/css" />
+<script type="text/javascript" src="./popupmenu.js"></script>
+<title>popupmenu.js - simple JavaScript popup menu library</title>
+</head>
+<body>
+<div class="wrapper"><div id="container">
+<div id="header"><a href="/">Home</a></div>
+<div id="content">
+<h1>popupmenu.js</h1>
+<p>
+popupmenu.js is a simple JavaScript popup menu library.
+This library doesn't need any other libraries.<br />
+This works on IE and Firefox(doesn't work on Opera).
+</p>
+<h2>download</h2>
+<p><a href="./popupmenu.js">popupmenu.js</a></p>
+<h2>examples</h2>
+<h3>example1</h3>
+<pre id="example1">
+var popup1 = new PopupMenu();
+popup1.add('open new window', function(target) {
+    window.open(location.href);
+});
+popup1.add('alert', function(target) {
+    alert('alert!');
+});
+popup1.addSeparator();
+popup1.add('close', function(target) {
+    window.close();
+});
+popup1.setSize(140, 0);
+popup1.bind('example1'); // target is this pre block
+/* popup1.bind(); // target is document */
+</pre>
+<h3>example2</h3>
+<pre id="example2">
+var popup2 = new PopupMenu();
+popup2.add('red', function(target) {
+    target.style.background = 'red';
+});
+popup2.add('blue', function(target) {
+    target.style.background = 'blue';
+});
+popup2.add('yellow', function(target) {
+    target.style.background = 'yellow';
+});
+popup2.addSeparator();
+popup2.add('default', function(target) {
+    target.style.background = '#EEE';
+})
+popup2.setSize(150, 0);
+popup2.bind('example2'); // target is this pre block
+</pre>
+<h2>license</h2>
+<p>
+The modified BSD license.
+</p>
+</div>
+<div id="footer">
+<address>&#169; 2006 <a href="http://spiritloose.net/">Jiro Nishiguchi</a>.</address>
+<img src="/img/mailto.png" width="159" height="21" alt="mail address" />
+</div>
+</div></div>
+<script type="text/javascript">
+//<![CDATA[
+eval(document.getElementById('example1').innerHTML);
+eval(document.getElementById('example2').innerHTML);
+//]]>
+</script>
+</body>
+</html>
